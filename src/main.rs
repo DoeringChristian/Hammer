@@ -85,9 +85,10 @@ fn main() {
     // This returns a `vulkano::swapchain::Surface` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
+    let mut surface = hammer::Surface::new(
+        WindowBuilder::new().build(&event_loop).unwrap(),
+        instance.clone(),
+    );
 
     // Choose device extensions that we're going to use.
     // In order to present images to a surface, we need a `Swapchain`, which is provided by the
@@ -190,67 +191,9 @@ fn main() {
     // iterator.
     let queue = queues.next().unwrap();
 
-    // Before we can draw on the surface, we have to create what is called a swapchain. Creating
-    // a swapchain allocates the color buffers that will contain the image that will ultimately
-    // be visible on the screen. These images are returned alongside the swapchain.
-    /*
-    let (mut swapchain, mut images) = {
-        // Querying the capabilities of the surface. When we create the swapchain we can only
-        // pass values that are allowed by the capabilities.
-        let surface_capabilities = physical_device
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
+    //let mut target_surface = hammer::Surface::new(device.clone(), &physical_device, surface.clone());
 
-        // Choosing the internal format that the images will have.
-        let image_format = Some(
-            physical_device
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0]
-            .0,
-        );
-
-        // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(
-            device.clone(),
-            surface.clone(),
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count,
-
-                image_format,
-                // The dimensions of the window, only used to initially setup the swapchain.
-                // NOTE:
-                // On some drivers the swapchain dimensions are specified by
-                // `surface_capabilities.current_extent` and the swapchain size must use these
-                // dimensions.
-                // These dimensions are always the same as the window dimensions.
-                //
-                // However, other drivers don't specify a value, i.e.
-                // `surface_capabilities.current_extent` is `None`. These drivers will allow
-                // anything, but the only sensible value is the window
-                // dimensions.
-                //
-                // Both of these cases need the swapchain to use the window dimensions, so we just
-                // use that.
-                image_extent: surface.window().inner_size().into(),
-
-                image_usage: ImageUsage::color_attachment(),
-
-                // The alpha mode indicates how the alpha value of the final image will behave. For
-                // example, you can choose whether the window will be opaque or transparent.
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .iter()
-                    .next()
-                    .unwrap(),
-
-                    ..Default::default()
-            },
-            )
-                .unwrap()
-    };
-    */
-
-    let mut target_surface = hammer::TargetSurface::new(device.clone(), &physical_device, surface.clone());
+    surface.create_swapchain(device.clone(), &physical_device);
 
     // We now create a buffer that will store the shape of our triangle.
     // We use #[repr(C)] here to force rustc to not do anything funky with our data, although for this
@@ -337,7 +280,7 @@ fn main() {
                 // be one of the types of the `vulkano::format` module (or alternatively one
                 // of your structs that implements the `FormatDesc` trait). Here we use the
                 // same format as the swapchain.
-                format: target_surface.swapchain.image_format(),
+                format: surface.image_format().unwrap(),
                 // TODO:
                 samples: 1,
                 }
@@ -432,7 +375,7 @@ fn main() {
                         // Whenever the window resizes we need to recreate everything dependent on the window size.
                         // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                         if recreate_swapchain {
-                            target_surface.recreate();
+                            surface.recreate_swapchain();
                             recreate_swapchain = false;
                         }
 
@@ -456,7 +399,7 @@ fn main() {
                                 Err(e) => panic!("Failed to acquire next image: {:?}", e),
                             };
                         */
-                        let target_image = target_surface.get_current_image();
+                        let target_image = surface.get_current_image();
                         let framebuffer = target_image.framebuffer_setup(render_pass.clone(), &mut viewport);
 
                         // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
@@ -529,7 +472,7 @@ fn main() {
                             // This function does not actually present the image immediately. Instead it submits a
                             // present command at the end of the queue. This means that it will only be presented once
                             // the GPU has finished executing the command buffer that draws the triangle.
-                            .then_swapchain_present(queue.clone(), target_surface.swapchain.clone(), target_image.image_num)
+                            .then_swapchain_present(queue.clone(), surface.swapchain.as_ref().unwrap().swapchain.clone(), target_image.image_num)
                             .then_signal_fence_and_flush();
 
                         match future {

@@ -4,6 +4,7 @@ use derive_more::*;
 
 mod vulkano{
     pub use vulkano::*;
+    pub use vulkano::instance::*;
     pub use vulkano::device::*;
     pub use vulkano::image::*;
     pub use vulkano::image::view::*;
@@ -13,11 +14,21 @@ mod vulkano{
     pub use vulkano::pipeline::graphics::viewport::*;
 }
 
-pub struct TargetSurface<W>{
+#[derive(Deref, DerefMut)]
+pub struct Swapchain<W>{
     pub device: Arc<vulkano::Device>,
-    pub surface: Arc<vulkano::Surface<W>>,
+    #[deref]
+    #[deref_mut]
     pub swapchain: Arc<vulkano::Swapchain<W>>,
     pub images: Vec<Arc<vulkano::SwapchainImage<W>>>,
+}
+
+#[derive(Deref, DerefMut)]
+pub struct Surface<W>{
+    #[deref]
+    #[deref_mut]
+    pub surface: Arc<vulkano::Surface<W>>,
+    pub swapchain: Option<Swapchain<W>>,
 }
 
 pub trait WithInnerIsize{
@@ -30,32 +41,42 @@ impl WithInnerIsize for winit::window::Window{
     }
 }
 
-impl<W: WithInnerIsize> TargetSurface<W>{
-    pub fn new(
+impl Surface<winit::window::Window>{
+    pub fn new(window: winit::window::Window, instance: Arc<vulkano::Instance>) -> Self{
+        let surface = vulkano_win::create_surface_from_winit(window, instance).unwrap();
+        Surface{
+            surface,
+            swapchain: None,
+        }
+    }
+}
+
+impl<W: WithInnerIsize> Surface<W>{
+    pub fn create_swapchain(
+        &mut self, 
         device: Arc<vulkano::Device>, 
-        pdevice: &vulkano::PhysicalDevice, 
-        surface: Arc<vulkano::Surface<W>>
-    ) -> Self{
+        pdevice: &vulkano::PhysicalDevice
+    ) -> bool{
         let (swapchain, images) = {
             let surface_capabilities = pdevice
-                .surface_capabilities(&surface, Default::default())
+                .surface_capabilities(&self.surface, Default::default())
                 .unwrap();
 
             let image_format = Some(
                 pdevice
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&self.surface, Default::default())
                 .unwrap()[0]
                 .0,
             );
 
             vulkano::Swapchain::new(
                 device.clone(),
-                surface.clone(),
+                self.surface.clone(),
                 vulkano::SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count,
 
                     image_format,
-                    image_extent: surface.window().inner_size().into(),
+                    image_extent: self.surface.window().inner_size().into(),
 
                     image_usage: vulkano::ImageUsage::color_attachment(),
 
@@ -70,44 +91,51 @@ impl<W: WithInnerIsize> TargetSurface<W>{
                 )
                     .unwrap()
         };
-
-        Self{
-            images,
-            swapchain,
-            device,
-            surface,
-        }
-    }
-    pub fn recreate(&mut self) -> bool{
-        let (new_swapchain, new_images) = 
-            match self.swapchain.recreate(vulkano::SwapchainCreateInfo{
-                image_extent: self.surface.window().inner_size().into(),
-                ..self.swapchain.create_info()
-            }){
-                Ok(r) => r,
-                Err(vulkano::SwapchainCreationError::ImageExtentNotSupported{..}) => return false,
-                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-            };
-
-        self.swapchain = new_swapchain;
-        self.images = new_images;
-
+        self.swapchain = Some(
+            Swapchain{
+                device,
+                swapchain,
+                images,
+            }
+        );
         true
+    }
+    pub fn recreate_swapchain(&mut self) -> bool{
+        match self.swapchain{
+            Some(ref mut swapchain) => {
+                let (new_swapchain, new_images) = 
+                    match swapchain.recreate(vulkano::SwapchainCreateInfo{
+                        image_extent: self.surface.window().inner_size().into(),
+                        ..swapchain.create_info()
+                    }){
+                        Ok(r) => r,
+                        Err(vulkano::SwapchainCreationError::ImageExtentNotSupported{..}) => return false,
+                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                    };
+                swapchain.swapchain = new_swapchain;
+                swapchain.images = new_images;
+                true
+            },
+            _ => false,
+        }
     }
     pub fn get_current_image(&self) -> SurfaceImage<W>{
 
         let (image_num, suboptimal, acquire_future) = 
-            match vulkano::acquire_next_image(self.swapchain.clone(), None){
+            match vulkano::acquire_next_image(self.swapchain.as_ref().unwrap().swapchain.clone(), None){
                 Ok(r) => r,
                 Err(e) => panic!("Failed to acquire next image: {:?}", e),
             };
 
         SurfaceImage{
-            image: self.images[image_num].clone(),
+            image: self.swapchain.as_ref().unwrap().images[image_num].clone(),
             suboptimal,
             acquire_future,
             image_num,
         }
+    }
+    pub fn image_format(&self) -> Option<vulkano::format::Format>{
+        Some(self.swapchain.as_ref()?.image_format())
     }
 }
 
