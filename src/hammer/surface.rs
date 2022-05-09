@@ -2,6 +2,7 @@
 use std::sync::Arc;
 use derive_more::*;
 
+// Getting rust analyzer problems when not defining the module here again.
 mod vulkano{
     pub use vulkano::*;
     pub use vulkano::instance::*;
@@ -13,6 +14,7 @@ mod vulkano{
     pub use vulkano::render_pass::*;
     pub use vulkano::pipeline::graphics::viewport::*;
 }
+use super::*;
 
 #[derive(Deref, DerefMut)]
 pub struct Swapchain<W>{
@@ -42,7 +44,7 @@ impl WithInnerIsize for winit::window::Window{
 }
 
 impl Surface<winit::window::Window>{
-    pub fn new(window: winit::window::Window, instance: Arc<vulkano::Instance>) -> Self{
+    pub fn new(window: winit::window::Window, instance: Arc<vulkano::Instance>) -> Surface<winit::window::Window>{
         let surface = vulkano_win::create_surface_from_winit(window, instance).unwrap();
         Surface{
             surface,
