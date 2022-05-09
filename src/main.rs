@@ -51,125 +51,11 @@ use winit::{
 };
 
 mod vk;
+mod hammer;
 
 extern crate derive_more;
 use derive_more::*;
 
-pub struct TargetSurface{
-    device: Arc<Device>,
-    surface: Arc<Surface<Window>>,
-    swapchain: Arc<Swapchain<Window>>,
-    images: Vec<Arc<SwapchainImage<Window>>>,
-}
-
-impl TargetSurface{
-    pub fn new(device: Arc<Device>, pdevice: &PhysicalDevice, surface: Arc<Surface<Window>>) -> Self{
-        let (swapchain, images) = {
-            let surface_capabilities = pdevice
-                .surface_capabilities(&surface, Default::default())
-                .unwrap();
-
-            let image_format = Some(
-                pdevice
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-            );
-
-            Swapchain::new(
-                device.clone(),
-                surface.clone(),
-                SwapchainCreateInfo {
-                    min_image_count: surface_capabilities.min_image_count,
-
-                    image_format,
-                    image_extent: surface.window().inner_size().into(),
-
-                    image_usage: ImageUsage::color_attachment(),
-
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .iter()
-                        .next()
-                        .unwrap(),
-
-                        ..Default::default()
-                },
-                )
-                    .unwrap()
-        };
-
-        Self{
-            images,
-            swapchain,
-            device,
-            surface,
-        }
-    }
-    pub fn recreate(&mut self) -> bool{
-        let (new_swapchain, new_images) = 
-            match self.swapchain.recreate(SwapchainCreateInfo{
-                image_extent: self.surface.window().inner_size().into(),
-                ..self.swapchain.create_info()
-            }){
-                Ok(r) => r,
-                Err(SwapchainCreationError::ImageExtentNotSupported{..}) => return false,
-                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-            };
-
-        self.swapchain = new_swapchain;
-        self.images = new_images;
-
-        true
-    }
-    pub fn get_current_image(&self) -> SurfaceImage{
-
-        let (image_num, suboptimal, acquire_future) = 
-            match acquire_next_image(self.swapchain.clone(), None){
-                Ok(r) => r,
-                Err(e) => panic!("Failed to acquire next image: {:?}", e),
-            };
-
-        SurfaceImage{
-            image: self.images[image_num].clone(),
-            suboptimal,
-            acquire_future,
-            image_num,
-        }
-    }
-}
-
-#[derive(Deref, DerefMut)]
-pub struct SurfaceImage{
-    #[deref]
-    #[deref_mut]
-    image: Arc<SwapchainImage<Window>>,
-    suboptimal: bool,
-    acquire_future: SwapchainAcquireFuture<Window>,
-    image_num: usize, 
-}
-
-impl SurfaceImage{
-    pub fn create_view_default(&self) -> Result<Arc<ImageView<SwapchainImage<Window>>>, ImageViewCreationError>{
-        ImageView::new_default(self.image.clone())
-    }
-    pub fn framebuffer_setup(&self, render_pass: Arc<RenderPass>, viewport: &mut Viewport) -> Arc<Framebuffer>{
-        let dimensions = self.image.dimensions().width_height();
-        viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-        let view = self.create_view_default().unwrap();
-
-        let mut attachments: Vec<Arc<dyn ImageViewAbstract>> = Vec::new();
-        attachments.push(view);
-        Framebuffer::new(
-            render_pass,
-            FramebufferCreateInfo{
-                attachments,
-                ..Default::default()
-            },
-        ).unwrap()
-    }
-}
 
 fn main() {
     // The first step of any Vulkan program is to create an instance.
@@ -364,7 +250,7 @@ fn main() {
     };
     */
 
-    let mut target_surface = TargetSurface::new(device.clone(), &physical_device, surface.clone());
+    let mut target_surface = hammer::TargetSurface::new(device.clone(), &physical_device, surface.clone());
 
     // We now create a buffer that will store the shape of our triangle.
     // We use #[repr(C)] here to force rustc to not do anything funky with our data, although for this
@@ -546,33 +432,6 @@ fn main() {
                         // Whenever the window resizes we need to recreate everything dependent on the window size.
                         // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                         if recreate_swapchain {
-                            /*
-                            // Get the new dimensions of the window.
-
-                            let (new_swapchain, new_images) =
-                                match swapchain.recreate(SwapchainCreateInfo {
-                                    image_extent: surface.window().inner_size().into(),
-                                    ..swapchain.create_info()
-                                }) {
-                                    Ok(r) => r,
-                                    // This error tends to happen when the user is manually resizing the window.
-                                    // Simply restarting the loop is the easiest way to fix this issue.
-                                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                                };
-
-                            swapchain = new_swapchain;
-                            // Because framebuffers contains an Arc on the old swapchain, we need to
-                            // recreate framebuffers as well.
-                            /*
-                               framebuffers = window_size_dependent_setup(
-                               &new_images,
-                               render_pass.clone(),
-                               &mut viewport,
-                               );
-                               */
-                            images = new_images;
-                            */
                             target_surface.recreate();
                             recreate_swapchain = false;
                         }
