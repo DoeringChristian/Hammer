@@ -2,6 +2,8 @@
 use std::sync::Arc;
 use derive_more::*;
 
+use super::GetPhysicalDevice;
+
 // Getting rust analyzer problems when not defining the module here again.
 mod vulkano{
     pub use vulkano::*;
@@ -14,7 +16,6 @@ mod vulkano{
     pub use vulkano::render_pass::*;
     pub use vulkano::pipeline::graphics::viewport::*;
 }
-use super::*;
 
 #[derive(Deref, DerefMut)]
 pub struct Swapchain<W>{
@@ -54,18 +55,18 @@ impl Surface<winit::window::Window>{
 }
 
 impl<W: WithInnerIsize> Surface<W>{
-    pub fn create_swapchain(
+    pub fn create_swapchain<P: GetPhysicalDevice>(
         &mut self, 
         device: Arc<vulkano::Device>, 
-        pdevice: &vulkano::PhysicalDevice
+        pdevice: P
     ) -> bool{
         let (swapchain, images) = {
-            let surface_capabilities = pdevice
+            let surface_capabilities = pdevice.get_physical_device()
                 .surface_capabilities(&self.surface, Default::default())
                 .unwrap();
 
             let image_format = Some(
-                pdevice
+                pdevice.get_physical_device()
                 .surface_formats(&self.surface, Default::default())
                 .unwrap()[0]
                 .0,

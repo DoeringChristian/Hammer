@@ -910,6 +910,7 @@ dependencies = [
 name = "test03"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "bytemuck",
  "derive_more",
  "vulkano",

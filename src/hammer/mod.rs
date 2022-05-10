@@ -13,5 +13,9 @@ pub mod vulkano{
 }
 
 pub mod surface;
+pub mod instance;
+pub mod device;
 
 pub use surface::*;
+pub use instance::*;
+pub use device::*;
